@@ -1,0 +1,214 @@
+# ==========================================
+# Emotion Recognition from Speech
+# ==========================================
+
+# Import Libraries
+import os
+import numpy as np
+import librosa
+import pandas as pd
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import (
+    Dense,
+    Conv1D,
+    MaxPooling1D,
+    Flatten,
+    Dropout,
+    LSTM
+)
+from tensorflow.keras.utils import to_categorical
+
+# ==========================================
+# Dataset Path
+# ==========================================
+
+DATASET_PATH = "dataset/"
+
+# ==========================================
+# Feature Extraction using MFCC
+# ==========================================
+
+def extract_features(file_path):
+
+    audio, sample_rate = librosa.load(
+        file_path,
+        duration=3,
+        offset=0.5
+    )
+
+    mfccs = librosa.feature.mfcc(
+        y=audio,
+        sr=sample_rate,
+        n_mfcc=40
+    )
+
+    mfccs_scaled = np.mean(mfccs.T, axis=0)
+
+    return mfccs_scaled
+
+# ==========================================
+# Load Dataset
+# ==========================================
+
+features = []
+labels = []
+
+print("Loading dataset...")
+
+for emotion in os.listdir(DATASET_PATH):
+
+    emotion_folder = os.path.join(
+        DATASET_PATH,
+        emotion
+    )
+
+    if os.path.isdir(emotion_folder):
+
+        for file in os.listdir(emotion_folder):
+
+            file_path = os.path.join(
+                emotion_folder,
+                file
+            )
+
+            try:
+                feature = extract_features(file_path)
+
+                features.append(feature)
+                labels.append(emotion)
+
+            except Exception as e:
+                print(f"Error processing {file}: {e}")
+
+print("Dataset Loaded Successfully!")
+
+# ==========================================
+# Convert to NumPy Arrays
+# ==========================================
+
+X = np.array(features)
+y = np.array(labels)
+
+# Encode Labels
+encoder = LabelEncoder()
+y_encoded = encoder.fit_transform(y)
+
+# One Hot Encoding
+y_categorical = to_categorical(y_encoded)
+
+# Reshape for CNN/LSTM
+X = np.expand_dims(X, axis=2)
+
+# ==========================================
+# Train-Test Split
+# ==========================================
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y_categorical,
+    test_size=0.2,
+    random_state=42
+)
+
+# ==========================================
+# Build Deep Learning Model
+# ==========================================
+
+model = Sequential()
+
+# CNN Layer
+model.add(
+    Conv1D(
+        filters=64,
+        kernel_size=3,
+        activation='relu',
+        input_shape=(X.shape[1], 1)
+    )
+)
+
+model.add(MaxPooling1D(pool_size=2))
+
+# LSTM Layer
+model.add(
+    LSTM(
+        64,
+        return_sequences=False
+    )
+)
+
+model.add(Dropout(0.3))
+
+# Fully Connected Layer
+model.add(Dense(64, activation='relu'))
+
+# Output Layer
+model.add(
+    Dense(
+        y_categorical.shape[1],
+        activation='softmax'
+    )
+)
+
+# ==========================================
+# Compile Model
+# ==========================================
+
+model.compile(
+    optimizer='adam',
+    loss='categorical_crossentropy',
+    metrics=['accuracy']
+)
+
+# ==========================================
+# Train Model
+# ==========================================
+
+history = model.fit(
+    X_train,
+    y_train,
+    epochs=30,
+    batch_size=32,
+    validation_data=(X_test, y_test)
+)
+
+# ==========================================
+# Evaluate Model
+# ==========================================
+
+loss, accuracy = model.evaluate(
+    X_test,
+    y_test
+)
+
+print(f"\nTest Accuracy: {accuracy * 100:.2f}%")
+
+# ==========================================
+# Save Model
+# ==========================================
+
+model.save("models/emotion_model.h5")
+
+print("Model saved successfully!")
+
+# ==========================================
+# Sample Prediction
+# ==========================================
+
+sample_file = "sample.wav"
+
+feature = extract_features(sample_file)
+
+feature = np.expand_dims(feature, axis=0)
+feature = np.expand_dims(feature, axis=2)
+
+prediction = model.predict(feature)
+
+predicted_emotion = encoder.inverse_transform(
+    [np.argmax(prediction)]
+)
+
+print(f"\nPredicted Emotion: {predicted_emotion[0]}")
