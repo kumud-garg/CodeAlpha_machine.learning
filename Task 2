@@ -1,0 +1,179 @@
+# ==========================================
+# Disease Prediction from Medical Data
+# ==========================================
+
+# Import Libraries
+import pandas as pd
+import numpy as np
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
+
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    roc_auc_score,
+    confusion_matrix,
+    classification_report
+)
+
+import joblib
+
+# ==========================================
+# Load Dataset
+# ==========================================
+
+# Replace with your dataset path
+data = pd.read_csv("data/disease_data.csv")
+
+# Display first rows
+print("\nDataset Preview:\n")
+print(data.head())
+
+# ==========================================
+# Data Preprocessing
+# ==========================================
+
+# Target column
+target_column = "target"
+
+# Features and Labels
+X = data.drop(target_column, axis=1)
+y = data[target_column]
+
+# Train-Test Split
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y
+)
+
+# Feature Scaling
+scaler = StandardScaler()
+
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# ==========================================
+# Machine Learning Models
+# ==========================================
+
+models = {
+    "Logistic Regression": LogisticRegression(),
+    "SVM": SVC(probability=True),
+    "Random Forest": RandomForestClassifier(
+        n_estimators=100,
+        random_state=42
+    ),
+    "XGBoost": XGBClassifier(
+        eval_metric='logloss',
+        use_label_encoder=False
+    )
+}
+
+# ==========================================
+# Model Training and Evaluation
+# ==========================================
+
+results = []
+
+best_model = None
+best_accuracy = 0
+
+for name, model in models.items():
+
+    print(f"\n========== {name} ==========")
+
+    # Train model
+    model.fit(X_train_scaled, y_train)
+
+    # Predictions
+    y_pred = model.predict(X_test_scaled)
+
+    # Probabilities for ROC-AUC
+    y_prob = model.predict_proba(X_test_scaled)[:, 1]
+
+    # Metrics
+    accuracy = accuracy_score(y_test, y_pred)
+    precision = precision_score(y_test, y_pred)
+    recall = recall_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred)
+    roc_auc = roc_auc_score(y_test, y_prob)
+
+    # Store Results
+    results.append([
+        name,
+        accuracy,
+        precision,
+        recall,
+        f1,
+        roc_auc
+    ])
+
+    # Print Results
+    print(f"Accuracy  : {accuracy:.4f}")
+    print(f"Precision : {precision:.4f}")
+    print(f"Recall    : {recall:.4f}")
+    print(f"F1 Score  : {f1:.4f}")
+    print(f"ROC-AUC   : {roc_auc:.4f}")
+
+    print("\nClassification Report:\n")
+    print(classification_report(y_test, y_pred))
+
+    print("\nConfusion Matrix:\n")
+    print(confusion_matrix(y_test, y_pred))
+
+    # Save Best Model
+    if accuracy > best_accuracy:
+        best_accuracy = accuracy
+        best_model = model
+
+# ==========================================
+# Save Best Model
+# ==========================================
+
+joblib.dump(best_model, "models/best_disease_model.pkl")
+joblib.dump(scaler, "models/scaler.pkl")
+
+print("\nBest model saved successfully!")
+
+# ==========================================
+# Results Summary
+# ==========================================
+
+results_df = pd.DataFrame(
+    results,
+    columns=[
+        "Model",
+        "Accuracy",
+        "Precision",
+        "Recall",
+        "F1 Score",
+        "ROC-AUC"
+    ]
+)
+
+print("\nFinal Results:\n")
+print(results_df)
+
+# ==========================================
+# Sample Prediction
+# ==========================================
+
+sample_data = np.array([X.iloc[0].values])
+
+sample_scaled = scaler.transform(sample_data)
+
+prediction = best_model.predict(sample_scaled)
+
+print("\nSample Prediction:")
+print("Disease Detected" if prediction[0] == 1 else "No Disease")
